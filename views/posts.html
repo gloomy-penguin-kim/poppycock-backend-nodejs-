@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+  <style>
+ div.postDiv {
+  border: 1px solid black; 
+  padding: 1rem
+
+ }
+  </style>
+<script>
+
+function getCookieValue(cookieName) {
+    const name = cookieName + "=";
+    console.log("document.cookie "+document.cookie)
+    const decodedCookie = decodeURIComponent(document.cookie);
+    const cookieArray = decodedCookie.split(';');
+
+    for (let i = 0; i < cookieArray.length; i++) {
+        let cookie = cookieArray[i].trim();
+        if (cookie.indexOf(name) === 0) {
+            return cookie.substring(name.length, cookie.length);
+        }
+    }
+    return null;
+}  
+
+function setCookie(cname, cvalue) {
+    const d = new Date();
+    d.setTime(d.getTime() + (24*60*60*1000));
+    let expires = "expires="+ d.toUTCString();
+    document.cookie = cname + "=" + cvalue + ";" + expires + ";path=/";
+}
+
+function delete_cookie( name ) {
+    if( getCookieValue( name ) ) {
+        document.cookie = name + "=" + getCookieValue( name )  + ";expires=Thu, 01 Jan 1970 00:00:01 GMT";
+    }
+}
+
+let checkSession = () => {
+  let curr_user = getCookieValue("username");
+  if (curr_user && curr_user !== "") {
+    document.getElementById("loginlogout").innerHTML = 
+    '<span class="homepage_links" style="margin-left:10px; text-decoration:none; color: rgba(255,255,255,0.66)">' + curr_user +'</span>' +
+    '<a style="margin-left:10px; text-decoration:none; color: rgba(255,255,255,0.66)" href="/api/logout">Logout</a>'
+  } else {
+    document.getElementById("loginlogout").innerHTML = 
+    '<a style="margin-left:10px; text-decoration:none; color: rgba(255,255,255,0.66)" href="/login">Login</a>'+
+    '<a style="margin-left:10px; text-decoration:none; color: rgba(255,255,255,0.66)" href="/register">Register</a>'
+  }
+ }
+
+const posts = [] 
+</script>
+</head>
+<body onload="checkSession()" style="font-size: 17px;">    
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#">Final Project: NodeJS & JWT</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav">
+        <li class="nav-item">
+          <a class="nav-link" aria-current="page" href="/">Home</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/posts" >New Post</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/posts/all" >All Posts</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/about">About Us</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/contact">Contact Us</a>
+        </li> 
+      </ul> 
+      <ul class="navbar-nav ms-auto">
+          <li class="nav-item">
+            <div class="loginlink" id="loginlogout"></div>
+          </li>
+      </ul>
+    </div>
+  </div>
+</nav> 
+
+
+<div style="display: flex;flex-direction: column;"> 
+<div style="display: flex;flex-direction: row;margin: auto; justify-content: center;">  
+  <h1 id="heading" style="color:rgba(0, 0, 0, 0.66)">Post</h1>
+</div> 
+
+
+<div id="mainContainer" class="container" style="width:30rem; border:1px solid black;">
+
+  <form id="post_form" action="/api/login" method="POST">
+      <div class="form-group" style="padding:10px">
+        <label for="text" style="color: rgba(0,0,0,0.55);">Enter Text</label>
+        <textarea class="form-control" name="text" id="text" placeholder="Enter text" style="height:20rem" required></textarea>
+      </div>  
+      <div class="form-group" style="padding:5px">
+          <div style="display:flex;flex-direction:row;justify-content: center;margin:auto; padding: 0.5rem">
+          <button style="background-color:  rgb(64, 57, 64);" type="submit" class="btn btn-primary">Post</button>
+          </div>
+      </div>
+    </form> 
+    <div style="text-align: center; padding-bottom:.5rem" id="messageDiv"></div>
+</div> 
+
+ 
+     
+
+
+
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script>
+var coll = document.getElementsByClassName("collapsible");
+var i;
+
+for (i = 0; i < coll.length; i++) {
+  coll[i].addEventListener("click", function() {
+    this.classList.toggle("active");
+    var content = this.nextElementSibling;
+    if (content.style.display === "block") {
+      content.style.display = "none";
+    } else {
+      content.style.display = "block";
+    }
+  });
+} 
+const form = document.getElementById("post_form") 
+  
+ 
+form.addEventListener('submit', (event) => {
+    event.preventDefault()
+    const formData = Object.fromEntries(new FormData(form))
+    console.log("formData", formData)
+
+    axios.post('/api/posts', formData)
+        .then(function (response) {
+            console.log(response)
+            document.getElementById("messageDiv").innerText = response.message
+            if (response.status == 200) { 
+                checkSession()  
+                console.log("document.cookies", document.cookies)
+                window.location.replace("/posts/all")
+            }
+            else {
+                console.log("ERROR", response.data.message); 
+                document.getElementById("messageDiv").innerText = response.data.message
+                form.reset(); 
+            } 
+        }) 
+        .catch(function (error) {
+            console.log(error);
+        });  
+})
+
+ 
+
+
+</script> 
+</body>
+</html>
