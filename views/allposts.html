@@ -14,6 +14,13 @@
     font-size: 14px; 
     text-align: right;
  }
+
+.toDelete {
+    color: #007bff; 
+}
+.toDelete:hover {
+    color: #0151a7; 
+}
   </style>
 <script>
 
@@ -132,14 +139,13 @@ for (i = 0; i < coll.length; i++) {
 } 
 const form = document.getElementById("post_form") 
 
-
+const loadPosts = () => { 
 axios.get('/api/posts', document.cookie.userId)
-  .then(response => {  
-    console.log("response.data", response.data)
+  .then(response => {   
+
     if (!response.data) return 
     response.data.forEach((post) => {
-      const postlist = document.getElementById("postlist")
-      console.log("post", post)  
+      const postlist = document.getElementById("postlist") 
 
       const childDiv = document.createElement("div")
       childDiv.classList.add("childDiv")  
@@ -164,8 +170,11 @@ axios.get('/api/posts', document.cookie.userId)
             aUpdate.href = "/posts/" + post._id
             aUpdate.innerText = "   (Update)"
             const aDelete = document.createElement("a") 
-            aDelete.onclick = onDeleteFunction() 
+            aDelete.onclick = onDeleteFunction; 
+            aDelete.class = "toDelete"
+            aDelete.href = "/api/posts/delete/"+post._id 
             aDelete.innerText = "   (Delete)"
+            aDelete.id = "delete" + post._id 
  
             const userDiv = document.createElement("div")
             userDiv.classList.add("userDiv")
@@ -187,9 +196,19 @@ axios.get('/api/posts', document.cookie.userId)
   .catch(error => { 
     console.log(error) 
   })   
-
+}
+loadPosts()
+ 
  const onDeleteFunction = (postId) => {
-    alert("deleting post", postId)
+    console.log(postId) 
+    axios.delete('/api/posts/' + postId )
+        .then(response => {  
+            console.log("response.data", response.data)
+            loadData() 
+        })
+        .catch(error => {  
+            console.log(error) 
+        })
  }
 
  const onUpdateFunction = (postId) => {

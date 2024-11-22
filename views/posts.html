@@ -147,10 +147,10 @@ form.addEventListener('submit', (event) => {
     axios.post('/api/posts', formData)
         .then(function (response) {
             console.log(response)
-            document.getElementById("messageDiv").innerText = response.message
+            document.getElementById("messageDiv").innerText = response.data.message
             if (response.status == 200) { 
                 checkSession()  
-                console.log("document.cookies", document.cookies)
+                console.log("document.cookies", getCookieValue("username"))
                 window.location.replace("/posts/all")
             }
             else {
