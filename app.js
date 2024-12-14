@@ -1,10 +1,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const session = require('express-session');
-const path = require('path');
-const bcrypt = require('bcrypt'); 
-const { timeStamp } = require('console');
-const axios = require('axios').default;
+const session = require('express-session'); 
+const bcrypt = require('bcrypt');   
 
 const morgan = require('morgan'); 
 const cors = require('cors'); 
@@ -215,12 +212,13 @@ const cleanText = (text) => {
             .replaceAll(/_+/g, '_')
             .toLowerCase() 
 }
-const cleanWord = (word) => {
-    return word.replaceAll("-","_")
-            .replaceAll("'","_")
-            .replaceAll(/[^\w\s_]/g,'')
-            .replaceAll(/\s+/g, '')
-            .replaceAll(/_+/g, '_')
+const cleanWord = (text) => {
+    return text.replace(/-/g,"_")
+            .replace(/'/g,"_")
+            .replace(/ /g,"_")
+            .replace(/\s+/g, '_')
+            .replace(/[^\w\s]/g,'')
+            //.replace(/_+/g, '_')
             .toLowerCase() 
 }
 const isValidUsername = (name) => {
@@ -290,7 +288,6 @@ app.post('/api/register', authenticateApiKey, async (req, res) => {
     }
   });
 
-
 // Insert your user login code here.
 app.post('/api/login', authenticateApiKey, async (req, res) => { 
     const { name, password } = req.body; 
@@ -337,52 +334,71 @@ app.post('/api/login', authenticateApiKey, async (req, res) => {
             console.log(error) 
             res.status(500).json({ error: "Internal server error" });
         }) 
-  });
+});
 
-
- 
 // create a new post 
 app.post('/api/posts', [authenticateApiKey], (req, res) => {
     const { word, text, username } = req.body; 
+    
+    if (!username)  
+        return res.status(400).json({ error: 'Username is empty' });
   
     if (!text || typeof text !== 'string') 
-        return res.status(400).json({ message: 'Please provide valid post content' });
+        return res.status(400).json({ error: 'Please provide valid post content' });
 
     const clean = cleanText(text)  
     const wordClean = cleanWord(word)
   
     console.log(req.user)
-    const newPost = new Post({ name: username, word: wordClean, text: text, clean: clean });
-    console.log(newPost)
-    newPost.save()
-        .then(() => { 
-            res.status(200).json({ message: 'Post created successfully' });
-
-            Word.find({ word: wordClean })
-                .then(data => {
-                    if (!data || data.length == 0) {
-                        console.log("A new word!", wordClean)
-                        Word.create({ word: wordClean }) 
-                    }
-                    else {
-                        console.log("data isnt empty", data)
-                    }
-                })
+    console.log(text)
+    const newPost = Post.create({ name: username, word: wordClean, text: text, clean: clean })
+        .then(data => { 
+            res.status(200).json({ message: 'Post created successfully', post: data });
         })
-        .catch(() => {
-            res.status(500).json({ error: "Error saving new post" })
+
+    Word.find({ word: wordClean })
+        .then(data => {
+            if (!data || data.length == 0) {
+                console.log("A new word!", wordClean)
+                Word.create({ word: wordClean }) 
+            }
+            else {
+                console.log("data isnt empty", data)
+            }
         }) 
-  });
+});
+
+// get a post by its postId 
+app.get('/api/posts/:postId', [authenticateApiKey], (req, res) => {
+    const postId = req.params.postId;    
+    console.log(req.params.postId) 
+
+    const objId = db.mongoose.Types.ObjectId(postId);
+
+    allPostsByWord.aggregate() 
+        .match({postId: objId})
+        .then(data => { 
+            if (data) 
+                res.status(200).json(data) 
+            else 
+                res.status(200).json([]) 
+        })
+        .catch(err => {
+            console.log(err) 
+            res.status(500).json({ error: "Error finding post in database" })
+        })
+ 
+});
 
 // random words
 app.get('/api/random/:num', [authenticateApiKey], async (req, res) => {
-    const num = parseInt(req.params.num);  
+    const num = parseInt(req.params.num) || 1;  
     console.log("/api/posts", req.params)
  
     Word.aggregate() 
         .sample(num)
         .exec()       
-        .then((data) => {  
+        .then((data) => {   
             res.status(200).send(data) 
         })
         .catch(error => {
@@ -391,20 +407,34 @@ app.get('/api/random/:num', [authenticateApiKey], async (req, res) => {
         }) 
 });
 
-
 // list all posts for this user
-app.get('/api/posts/:name', [authenticateApiKey], async (req, res) => {
+app.get('/api/users/:name', [authenticateApiKey], async (req, res) => { 
     const name = req.params.name;  
+    const tz = parseInt(req.query.tz) || 0;  
     console.log("/api/posts", req.params)
  
     Post.aggregate()
         .match({ name: { $regex: "^"+name+"$", $options: 'i' } })
-        .group({ _id: { postId: "$_id", word: "$word" }, updatedAt: { $max: "$createdAt" } })
+        .group({ _id: { postId: "$_id", word: "$word" }, updatedAt: { $max: "$updatedAt" } })
         .project({  postId : "$_id.postId", word: "$_id.word", updatedAt: "$updatedAt", "_id": "$taco" })
-        .sort({ updatedAt: -1 })
-        .addFields({yearMonthDay: { $dateToString: { format: "%Y-%m-%d", date: "$updatedAt" } }})
+        .sort({ updatedAt: -1 }) 
+        .addFields({
+            yyyymmddhms: {
+              $dateToString: {
+                format: "%Y-%m-%d %H:%M:%S",
+                date: { $dateSubtract: {startDate: "$updatedAt", unit: "minute", amount: tz }}
+              }
+            }, 
+            yearMonthDay: {
+                $dateToString: {
+                  format: "%Y-%m-%d",
+                  date: { $dateSubtract: {startDate: "$updatedAt", unit: "minute", amount: tz }}
+                }
+              }
+        })
         .exec()       
         .then((data) => {  
+            console.log(data) 
             res.status(200).send(data) 
         })
         .catch(error => {
@@ -415,27 +445,58 @@ app.get('/api/posts/:name', [authenticateApiKey], async (req, res) => {
 
 // list all posts for this date 
 app.get('/api/when/:dt?', [authenticateApiKey], async (req, res) => {
-    let dt = req.params.dt;  
-    console.log("/api/when", req.params)
+    let dt = req.params.dt;   
+    let tz = parseInt(req.query.tz,10) || 0; 
 
     if (dt == 'null' || dt == 'undefined') dt = null 
-
     if (!dt) {
         let data = await Post.aggregate() 
-                        .addFields({yearMonthDay: { $dateToString: { format: "%Y-%m-%d", date: "$updatedAt" } }})
+                        //.addFields({yearMonthDay: { $dateToString: { format: "%Y-%m-%d", date: "$updatedAt" } }}
                         .sample(1)
-                        .exec()
-        console.log("DATA", data[0].yearMonthDay)
-        dt = dt ||  data[0].yearMonthDay; 
+                        .exec()               
+        console.log("DATA", data[0].updatedAt)
+        console.log("dt", dt)
+        dt = dt ||  data[0].updatedAt;  
+        console.log("dt", dt)
     }
+
+    dt = new Date(dt).setUTCHours(0,0,0,0)        
+    // else { 
+
+    //     function formatDate(dt) {
+    //         return dt.toISOString().split['T'][0]
+    //     }
+        function addMinutes(date, minutes) {
+            return new Date(date.getTime() - minutes*60*1000);
+        }
+    //     dt = new Date(dt)
+    //     console.log("date 1", dt)
+    //     // dt = addMinutes(dt, tz) 
+    //     // console.log("date 2", dt)
+    //     console.log("toisostring",dt.toISOString().split('T')[0])
+    //     dt = dt.toISOString().split('T')[0] 
+    // }
+    date = addMinutes(new Date(new Date(dt).setUTCHours(0, 0, 0)), tz) 
+    date = date.toISOString()
+
+    date_plus_a_day = addMinutes(new Date(new Date(dt).setUTCHours(0, 0, 0) + 24 * 60 * 60 * 1000), tz) 
+    date_plus_a_day = date_plus_a_day.toISOString()
+    
  
-    Post.aggregate()
-        .addFields({yearMonthDay: { $dateToString: { format: "%Y-%m-%d", date: "$updatedAt" } }})
-        .match({ yearMonthDay: { $eq: dt }})
-        .project({ postId: "$_id", word: "$word", name: "$name", updatedDt: "$updatedAt", yearMonthDay: "$yearMonthDay" })
-        .sort( { updatedAt: -1})
+    console.log("dt", dt)
+    Post.aggregate()      
+        .addFields({ updatedAtTZ: { $dateSubtract: { startDate: "$updatedAt", unit: "minute", amount: tz, } }})
+        .match( {
+            $and: [
+                { updatedAtTZ: { $gte:  new Date(new Date(dt).setUTCHours(0, 0, 0)) } },
+                { updatedAtTZ: { $lt:   new Date(new Date(dt).getTime() + 24 * 60 * 60 * 1000)   } }
+           ]}) 
+        .group( { _id: { word: "$word", name: "$name" }, maxUpdatedDate: { $max: "$updatedAt"} }) 
+        .project({ word: "$_id.word", name: "$_id.name", maxUpdatedDate: "$maxUpdatedDate", _id: "$taco"})
+        .addFields({yearMonthDay: { $dateToString: { format: "%Y-%m-%d", date: { $dateSubtract: { startDate: "$maxUpdatedDate", unit: "minute", amount: tz }} } }}).addFields({yearMonthDay: { $dateToString: { format: "%Y-%m-%d", date: { $dateSubtract: { startDate: "$maxUpdatedDate", unit: "minute", amount: tz }} } }})
+        .sort( { maxUpdatedDate: -1})
         .exec()  
-        .then((data) => {  
+        .then((data) => {   
             res.status(200).send(data) 
         })
         .catch(error => {
@@ -444,9 +505,8 @@ app.get('/api/when/:dt?', [authenticateApiKey], async (req, res) => {
         }) 
 });
 
-
 // get user info 
-app.get('/api/users/:name', [authenticateApiKey], async (req, res) => {
+app.get('/api/users/info/:name', [authenticateApiKey], async (req, res) => {
     const name = req.params.name;   
     User.aggregate()
         .match({ name: { $regex: "^"+name+"$", $options: 'i' } })
@@ -460,7 +520,6 @@ app.get('/api/users/:name', [authenticateApiKey], async (req, res) => {
             res.status(500).send({ error : "Internal server error" })  
         }) 
 });
-
 
 // get who is posting 
 app.get('/api/who', [authenticateApiKey], async (req, res) => { 
@@ -486,37 +545,79 @@ app.get('/api/who', [authenticateApiKey], async (req, res) => {
 
 // get stats for today, yesterday 
 app.get('/api/stats', [authenticateApiKey], async (req, res) => {
-    let dt = new Date(); 
-    let year = dt.getFullYear();
-    let month = String(dt.getMonth() + 1).padStart(2, '0'); // JavaScript months are 0-indexed
-    let day = String(dt.getDate()).padStart(2, '0');
-    const today = year + "-" + month + "-" + day 
+    const tz = req.query.tz || 0 
+    // let dt = new Date(); 
+    // let year = dt.getFullYear();
+    // let month = String(dt.getMonth() + 1).padStart(2, '0'); // JavaScript months are 0-indexed
+    // let day = String(dt.getDate()).padStart(2, '0');
+    // const today = year + "-" + month + "-" + day 
+    // console.log("today", today)
     
-    let yesterday = new Date(new Date().setDate(new Date().getDate()-1));
-    year = yesterday.getFullYear();
-    month = String(yesterday.getMonth() + 1).padStart(2, '0'); // JavaScript months are 0-indexed
-    day = String(yesterday.getDate()).padStart(2, '0');
-    yesterday = year + "-" + month + "-" + day 
+    // let yesterday = new Date(new Date().setDate(new Date().getDate()-1));
+    // year = yesterday.getFullYear();
+    // month = String(yesterday.getMonth() + 1).padStart(2, '0'); // JavaScript months are 0-indexed
+    // day = String(yesterday.getDate()).padStart(2, '0');
+    // yesterday = year + "-" + month + "-" + day 
+    // console.log("yesterday", yesterday)
     
+
+    // const yesterday2 = new Date();
+    // yesterday2.setDate(yesterday.getDate() - 1);
+    // const yesterdayISO = yesterday2.toISOString().split('T')[0];
+    
+    //console.log(yesterdayISO); 
+
+    function subtractMinutes(date, minutes) {
+        return new Date(date.getTime() - minutes*60*1000);
+    }
+  
+
+    let today = new Date();
+    today.setDate(today.getDate() - 0);
+    today.setUTCHours(0,0,0,0);
+    today = subtractMinutes(today, tz)
+    console.log("Today: ", today);
+    
+    let yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setUTCHours(0,0,0,0);
+    yesterday = subtractMinutes(yesterday, tz)
+    console.log("Yesterday: ", yesterday);
+    // console.log(yesterdayISO); 
+    // db.post.find({
+    //     "createdAt": {
+    //       $gte: ISODate("2012-01-12T00:00:00Z"),
+    //       $lt: ISODate("2012-01-13T00:00:00Z")
+    //     }
+    //   })
+
     let rData = {}
 
     try {
         rData.yesterday = await Post.aggregate()
-                                .addFields({yearMonthDay: { $dateToString: { format: "%Y-%m-%d", date: "$updatedAt" } }})
-                                .match({ yearMonthDay: { $eq: yesterday }})
-                                .sort( { updatedAt: -1})
-                                .project({ postId: "$_id", word: "$word", name: "$name", updatedDt: "$updatedAt", yearMonthDay: "$yearMonthDay" })
-                                .group( { _id: { word: "$word" }, maxUpdatedDate: { $max: "$updatedDt"} })
+                                .match({ updatedAt: { 
+                                            $gte: yesterday,
+                                            $lt: today
+                                        } }) 
+                                .group( { _id: { word: "$word" }, maxUpdatedDate: { $max: "$updatedAt"} })
                                 .sort( { maxUpdatedDate: -1})
                                 .addFields({ word: "$_id.word", _id: "$taco" })
+                                // .addFields({yearMonthDay: { $dateToString: { format: "%Y-%m-%d", date: "$updatedAt" } }})
+                                // .project({ postId: "$_id", word: "$word", name: "$name", updatedDt: "$updatedAt", yearMonthDay: "$yearMonthDay" })
+                                // .group( { _id: { word: "$word" }, maxUpdatedDate: { $max: "$updatedDt"} })
+                                // .sort( { maxUpdatedDate: -1})
+                                // .addFields({ word: "$_id.word", _id: "$taco" })
                                 .exec();
         rData.today = await Post.aggregate()
-                                .addFields({yearMonthDay: { $dateToString: { format: "%Y-%m-%d", date: "$updatedAt" } }})
-                                .match({ yearMonthDay: { $eq: today }})
-                                .project({ postId: "$_id", word: "$word", name: "$name", updatedDt: "$updatedAt", yearMonthDay: "$yearMonthDay" })
-                                .group( { _id: { word: "$word" }, maxUpdatedDate: { $max: "$updatedDt"} })
+                                .match({ updatedAt: { 
+                                            $gte: today 
+                                        } })
+                                .group( { _id: { word: "$word" }, maxUpdatedDate: { $max: "$updatedAt"} })
                                 .sort( { maxUpdatedDate: -1})
                                 .addFields({ word: "$_id.word", _id: "$taco" })
+                                //         .addFields({yearMonthDay: { $dateToString: { format: "%Y-%m-%d", date: "$updatedAt" } }})
+                                // .project({ postId: "$_id", word: "$word", name: "$name", updatedDt: "$updatedAt", yearMonthDay: "$yearMonthDay" })
+                                // .sort( { maxUpdatedDate: -1})
                                 .exec();
         res.status(200).json(rData);
     }
@@ -526,60 +627,79 @@ app.get('/api/stats', [authenticateApiKey], async (req, res) => {
     }
 });
 
+
+// random word
+app.get('/api/word', [authenticateApiKey], async (req, res) => {  
+    Word.aggregate() 
+        .sample(1)
+        .exec()       
+        .then((data) => {  
+            console.log(data) 
+            //res.redirect('/api/word/'+data[0].word)  
+
+            allPostsByWord.find({word: { $regex: "^"+data[0].word+"$", $options: 'i' } })
+            .then(data => {
+                res.status(200).json(data) 
+            })
+            .catch(err => {
+                console.log(err)
+                res.status(500).json({ message: "Cannot find the posts" })
+            })
+
+        })
+        .catch(error => {
+            console.log(error) 
+            res.status(500).send(error)  
+        }) 
+});
+
+// random word
+app.get('/api/word/random', [authenticateApiKey], async (req, res) => {  
+    Word.aggregate() 
+        .sample(1)
+        .exec()       
+        .then((data) => {  
+            console.log(data)   
+
+        })
+        .catch(error => {
+            console.log(error) 
+            res.status(500).send(error)  
+        }) 
+});
+
+
 // list all posts for this word
-app.get('/api/words/:word', [authenticateApiKey], async (req, res) => {
-    console.log("here", req.params.word)
+app.get('/api/word/:word', [authenticateApiKey], async (req, res) => {
+    console.log("here", req.query.tz)
     const word = req.params.word; 
+    const tz = parseInt(req.query.tz); 
     const clean = cleanWord(word) 
     
-    allPostsByWord.find({word: { $regex: "^"+clean+"$", $options: 'i' } })
+    allPostsByWord.aggregate()
+        .match({word: { $regex: "^"+clean+"$", $options: 'i' } })
+        .addFields({
+            yyyymmddhms: {
+              $dateToString: {
+                format: "%Y-%m-%d %H:%M:%S",
+                date: { $dateSubtract: {startDate: "$updatedAt", unit: "minute", amount: tz }}
+              }
+            }, 
+            yearMonthDay: {
+                $dateToString: {
+                  format: "%Y-%m-%d",
+                  date: { $dateSubtract: {startDate: "$updatedAt", unit: "minute", amount: tz }}
+                }
+              }
+        })
+        .exec() 
         .then(data => {
             res.status(200).json(data) 
         })
         .catch(err => {
             console.log(err)
             res.status(500).json({ message: "Cannot find the posts" })
-        })
- 
-    // Post.aggregate()
-    //     .match({ word: { $regex: "^"+word+"$", $options: 'i' } })
-    //     .addFields({ key_words: { $split: ["$clean", " "] } })
-    //     .unwind("$key_words")
-    //     .lookup({
-    //         "from": "words",
-    //         "localField": "key_words",
-    //         "foreignField": "word",
-    //         "as": "lookup_result"
-    //       })
-    //     //.match({ $expr: { $gt: [{$size:"$lookup_result"}, 0] } })
-    //     .addFields({ "foundWordsCount": { "size": "$lookup_result" } })
-    //     .group({
-    //         "_id": {
-    //           "createdAt":  "$createdAt", "updatedAt":  "$updatedAt", "_id": "$_id", 
-    //           "text": "$text", "name": "$name", "word": "$word", "clean": "$clean"
-    //         },
-    //         "word_array": { "$addToSet": { "$cond": { "if": { "$gte": [ "$foundWordsCount", 1] }, "then": "$key_words", "else": "$$REMOVE" }}}
-    //       })
-    //     .project({
-    //         "name": "$_id.name",
-    //         "word": "$_id.word",
-    //         "text": "$_id.text",
-    //         "clean": "$_id.clean",
-    //         "createdAt": "$_id.createdAt",
-    //         "updatedAt": "$_id.updatedAt",
-    //         "postId": "$_id._id",
-    //         "_id": "$taco",
-    //         "word_array": "$word_array"
-    //       }) 
-    //     .sort({ updatedAt: -1 })
-    //     .exec()       
-    //     .then((data) => {  
-    //         res.status(200).send(data) 
-    //     })
-    //     .catch(error => {
-    //         console.log(error) 
-    //         res.status(500).send({ "message" : error })  
-    //     }) 
+        }) 
 });
 
 
