@@ -22,6 +22,7 @@ const cookieParser = require("cookie-parser");
 const helmet = require('helmet')
 
 const app = express(); 
+app.use(session({ secret: 'somevalue' }));
 
 const PORT = process.env.PORT || 3002;
 const SECRET_KEY = process.env.SECRET_KEY;
