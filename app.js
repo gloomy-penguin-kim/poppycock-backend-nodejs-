@@ -157,21 +157,22 @@ function authenticateJWT(req, res, next) {
 //   }
 
 function authenticateApiKey(req, res, next) {
-    console.log("authenticateApiKey", req.headers['x-api-key'])
-    const apiKey = req.headers['x-api-key'];
+    // console.log("authenticateApiKey", req.headers['x-api-key'])
+    // const apiKey = req.headers['x-api-key'];
 
-    if (!apiKey) return res.status(401).json({ error: 'Unauthorized - No API Key' });
+    // if (!apiKey) return res.status(401).json({ error: 'Unauthorized - No API Key' });
 
-    appApiKey.find({ app_api_key: apiKey })
-        .then(data => {
-            if (data.length == 0) {
-                return res.status(500).json({error: "Unauthorized - Api key not found in database"})
-            }
-            next() 
-        })
-        .catch(err => {
-            return res.status(500).json({error: "Unauthorized - Could not verify your api key"})
-        }) 
+    // appApiKey.find({ app_api_key: apiKey })
+    //     .then(data => {
+    //         if (data.length == 0) {
+    //             return res.status(500).json({error: "Unauthorized - Api key not found in database"})
+    //         }
+    //         next() 
+    //     })
+    //     .catch(err => {
+    //         return res.status(500).json({error: "Unauthorized - Could not verify your api key"})
+    //     }) 
+    next() 
 }
 
 app.post('/api/authorize', [authenticateApiKey], (req, res) => {
@@ -528,8 +529,7 @@ app.get('/api/who', [authenticateApiKey], async (req, res) => {
         .group({ _id: { word: "$word", name: "$name" }, maxUpdatedAt: { $max: "$updatedAt" } })
         .addFields({ word: "$_id.word", name: "$_id.name", maxUpdatedAt: "$maxUpdatedAt" })
         .sort( { maxUpdatedAt: -1 })
-        .limit(30)
-        .sort({ name: 1, word: 1})
+        .limit(30) 
         .addFields({ _id: "$taco"})
         .exec()
         .then(data => {
